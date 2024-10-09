@@ -4,8 +4,8 @@ dnl First, define all of the version numbers up front.
 dnl In particular, this allows the version macro to be used in AC_INIT
 
 dnl These first two version numbers are updated automatically on each release.
-m4_define([LIBARCHIVE_VERSION_S],[3.7.5dev])
-m4_define([LIBARCHIVE_VERSION_N],[3007005])
+m4_define([LIBARCHIVE_VERSION_S],[3.8.0dev])
+m4_define([LIBARCHIVE_VERSION_N],[3008000])
 
 dnl bsdtar and bsdcpio versioning tracks libarchive
 m4_define([BSDTAR_VERSION_S],LIBARCHIVE_VERSION_S())
@@ -367,6 +367,7 @@ AC_CHECK_HEADERS([sys/param.h sys/poll.h sys/richacl.h])
 AC_CHECK_HEADERS([sys/select.h sys/statfs.h sys/statvfs.h sys/sysmacros.h])
 AC_CHECK_HEADERS([sys/time.h sys/utime.h sys/utsname.h sys/vfs.h sys/xattr.h])
 AC_CHECK_HEADERS([time.h unistd.h utime.h wchar.h wctype.h])
+AC_CHECK_TYPE([suseconds_t])
 AC_CHECK_HEADERS([windows.h])
 # check windows.h first; the other headers require it.
 AC_CHECK_HEADERS([wincrypt.h winioctl.h],[],[],
@@ -380,8 +381,23 @@ AC_ARG_WITH([zlib],
   AS_HELP_STRING([--without-zlib], [Don't build support for gzip through zlib]))
 
 if test "x$with_zlib" != "xno"; then
-  AC_CHECK_HEADERS([zlib.h])
-  AC_CHECK_LIB(z,inflate)
+  old_LIBS="$LIBS"
+  LIBS="$LIBS -lz"
+  AC_LINK_IFELSE([AC_LANG_SOURCE([[
+      #include <zlib.h>
+      #if !defined(ZLIB_VERNUM)
+      // zlib 1.2.0 should work too, but it's difficult to test for.
+      // zlib 1.2.1 onwards have ZLIB_VERNUM, which is easy to check.
+      #error zlib >= 1.2.1 is required.
+      #endif
+      // Check that there's an inflate function.
+      int main(int argc, char **argv) { inflate(NULL, 0); return 0; }
+    ]])],
+    [AC_DEFINE([HAVE_ZLIB_H], [1], [Define to 1 if you have zlib >= 1.2.1])
+      AC_MSG_RESULT([found a suitable version of zlib (>= 1.2.1)])
+    ],
+    [AC_MSG_RESULT([could not find a suitable version of zlib (>= 1.2.1)])
+      LIBS="$old_LIBS"])
 fi
 
 AC_ARG_WITH([bz2lib],

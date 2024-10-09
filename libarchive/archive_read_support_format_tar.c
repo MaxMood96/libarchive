@@ -123,8 +123,6 @@ struct tar {
 	struct archive_string	 entry_uname;
 	struct archive_string	 entry_gname;
 	struct archive_string	 entry_linkpath;
-	struct archive_string	 longname;
-	struct archive_string	 pax_global;
 	struct archive_string	 line;
 	int			 pax_hdrcharset_utf8;
 	int64_t			 entry_bytes_remaining;
@@ -258,7 +256,7 @@ archive_read_support_format_tar(struct archive *_a)
 	archive_check_magic(_a, ARCHIVE_READ_MAGIC,
 	    ARCHIVE_STATE_NEW, "archive_read_support_format_tar");
 
-	tar = (struct tar *)calloc(1, sizeof(*tar));
+	tar = calloc(1, sizeof(*tar));
 	if (tar == NULL) {
 		archive_set_error(&a->archive, ENOMEM,
 		    "Can't allocate tar data");
@@ -296,9 +294,8 @@ archive_read_format_tar_cleanup(struct archive_read *a)
 	archive_string_free(&tar->entry_pathname_override);
 	archive_string_free(&tar->entry_uname);
 	archive_string_free(&tar->entry_gname);
+	archive_string_free(&tar->entry_linkpath);
 	archive_string_free(&tar->line);
-	archive_string_free(&tar->pax_global);
-	archive_string_free(&tar->longname);
 	archive_string_free(&tar->localname);
 	free(tar);
 	(a->format->data) = NULL;
@@ -726,6 +723,7 @@ tar_read_header(struct archive_read *a, struct tar *tar,
 	archive_string_empty(&(tar->entry_pathname));
 	archive_string_empty(&(tar->entry_pathname_override));
 	archive_string_empty(&(tar->entry_uname));
+	archive_string_empty(&tar->entry_linkpath);
 
 	/* Ensure format is set. */
 	if (a->archive.archive_format_name == NULL) {
@@ -1176,13 +1174,16 @@ header_gnu_longname(struct archive_read *a, struct tar *tar,
     struct archive_entry *entry, const void *h, size_t *unconsumed)
 {
 	int err;
+	struct archive_string longname;
 
-	err = read_body_to_string(a, tar, &(tar->longname), h, unconsumed);
-	if (err != ARCHIVE_OK)
-		return (err);
-	if (archive_entry_copy_pathname_l(entry, tar->longname.s,
-	    archive_strlen(&(tar->longname)), tar->sconv) != 0)
-		err = set_conversion_failed_error(a, tar->sconv, "Pathname");
+	archive_string_init(&longname);
+	err = read_body_to_string(a, tar, &longname, h, unconsumed);
+	if (err == ARCHIVE_OK) {
+		if (archive_entry_copy_pathname_l(entry, longname.s,
+		    archive_strlen(&longname), tar->sconv) != 0)
+			err = set_conversion_failed_error(a, tar->sconv, "Pathname");
+	}
+	archive_string_free(&longname);
 	return (err);
 }
 
@@ -1519,9 +1520,17 @@ header_old_tar(struct archive_read *a, struct tar *tar,
 	const struct archive_entry_header_ustar	*header;
 	int err = ARCHIVE_OK, err2;
 
-	/* Copy filename over (to ensure null termination). */
+	/*
+	 * Copy filename over (to ensure null termination).
+	 * Skip if pathname was already set e.g. by header_gnu_longname()
+	 */
 	header = (const struct archive_entry_header_ustar *)h;
-	if (archive_entry_copy_pathname_l(entry,
+
+	const char *existing_pathname = archive_entry_pathname(entry);
+	const wchar_t *existing_wcs_pathname = archive_entry_pathname_w(entry);
+	if ((existing_pathname == NULL || existing_pathname[0] == '\0')
+	    && (existing_wcs_pathname == NULL || existing_wcs_pathname[0] == '\0') &&
+	    archive_entry_copy_pathname_l(entry,
 	    header->name, sizeof(header->name), tar->sconv) != 0) {
 		err = set_conversion_failed_error(a, tar->sconv, "Pathname");
 		if (err == ARCHIVE_FATAL)
@@ -1935,6 +1944,7 @@ header_pax_extension(struct archive_read *a, struct tar *tar,
 		*unconsumed += 1;
 		tar_flush_unconsumed(a, unconsumed);
 	}
+	archive_string_free(&attr_name);
 	*unconsumed += ext_size + ext_padding;
 
 	/*
@@ -2476,13 +2486,13 @@ pax_attribute(struct archive_read *a, struct tar *tar, struct archive_entry *ent
 			}
 			else if (key_length == 8 && memcmp(key, "devmajor", 8) == 0) {
 				if ((err = pax_attribute_read_number(a, value_length, &t)) == ARCHIVE_OK) {
-					archive_entry_set_rdevmajor(entry, t);
+					archive_entry_set_rdevmajor(entry, (dev_t)t);
 				}
 				return (err);
 			}
 			else if (key_length == 8 && memcmp(key, "devminor", 8) == 0) {
 				if ((err = pax_attribute_read_number(a, value_length, &t)) == ARCHIVE_OK) {
-					archive_entry_set_rdevminor(entry, t);
+					archive_entry_set_rdevminor(entry, (dev_t)t);
 				}
 				return (err);
 			}
@@ -2505,7 +2515,7 @@ pax_attribute(struct archive_read *a, struct tar *tar, struct archive_entry *ent
 			}
 			else if (key_length == 3 && memcmp(key, "dev", 3) == 0) {
 				if ((err = pax_attribute_read_number(a, value_length, &t)) == ARCHIVE_OK) {
-					archive_entry_set_dev(entry, t);
+					archive_entry_set_dev(entry, (dev_t)t);
 				}
 				return (err);
 			}
@@ -2517,7 +2527,7 @@ pax_attribute(struct archive_read *a, struct tar *tar, struct archive_entry *ent
 			}
 			else if (key_length == 5 && memcmp(key, "nlink", 5) == 0) {
 				if ((err = pax_attribute_read_number(a, value_length, &t)) == ARCHIVE_OK) {
-					archive_entry_set_nlink(entry, t);
+					archive_entry_set_nlink(entry, (unsigned int)t);
 				}
 				return (err);
 			}
@@ -2906,7 +2916,7 @@ gnu_add_sparse_entry(struct archive_read *a, struct tar *tar,
 {
 	struct sparse_block *p;
 
-	p = (struct sparse_block *)calloc(1, sizeof(*p));
+	p = calloc(1, sizeof(*p));
 	if (p == NULL) {
 		archive_set_error(&a->archive, ENOMEM, "Out of memory");
 		return (ARCHIVE_FATAL);
@@ -3478,7 +3488,7 @@ base64_decode(const char *s, size_t len, size_t *out_len)
 
 	/* Allocate enough space to hold the entire output. */
 	/* Note that we may not use all of this... */
-	out = (char *)malloc(len - len / 4 + 1);
+	out = malloc(len - len / 4 + 1);
 	if (out == NULL) {
 		*out_len = 0;
 		return (NULL);
@@ -3533,7 +3543,7 @@ url_decode(const char *in, size_t length)
 	char *out, *d;
 	const char *s;
 
-	out = (char *)malloc(length + 1);
+	out = malloc(length + 1);
 	if (out == NULL)
 		return (NULL);
 	for (s = in, d = out; length > 0 && *s != '\0'; ) {

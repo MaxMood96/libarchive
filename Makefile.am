@@ -371,6 +371,7 @@ libarchive_test_SOURCES= \
 	libarchive/test/test_acl_platform_posix1e.c \
 	libarchive/test/test_acl_posix1e.c \
 	libarchive/test/test_acl_text.c \
+	libarchive/test/test_ar_mode.c \
 	libarchive/test/test_archive_api_feature.c \
 	libarchive/test/test_archive_clear_error.c \
 	libarchive/test/test_archive_cmdline.c \
@@ -581,6 +582,7 @@ libarchive_test_SOURCES= \
 	libarchive/test/test_write_disk_no_hfs_compression.c \
 	libarchive/test/test_write_disk_perms.c \
 	libarchive/test/test_write_disk_secure.c \
+	libarchive/test/test_write_disk_secure_noabsolutepaths.c \
 	libarchive/test/test_write_disk_secure744.c \
 	libarchive/test/test_write_disk_secure745.c \
 	libarchive/test/test_write_disk_secure746.c \
@@ -646,6 +648,7 @@ libarchive_test_SOURCES= \
 	libarchive/test/test_write_format_zip_file_zip64.c \
 	libarchive/test/test_write_format_zip_large.c \
 	libarchive/test/test_write_format_zip_stream.c \
+	libarchive/test/test_write_format_zip_windows_path.c \
 	libarchive/test/test_write_format_zip_zip64.c \
 	libarchive/test/test_write_open_memory.c \
 	libarchive/test/test_write_read_format_zip.c \
@@ -1114,6 +1117,7 @@ bsdtar_test_SOURCES= \
 	tar/test/test_option_H_upper.c \
 	tar/test/test_option_L_upper.c \
 	tar/test/test_option_O_upper.c \
+	tar/test/test_option_P.c \
 	tar/test/test_option_T_upper.c \
 	tar/test/test_option_U_upper.c \
 	tar/test/test_option_X_upper.c \
@@ -1264,6 +1268,7 @@ bsdcpio_test_SOURCES= \
 	cpio/test/test_basic.c \
 	cpio/test/test_cmdline.c \
 	cpio/test/test_extract_cpio_Z.c \
+	cpio/test/test_extract_cpio_absolute_paths.c \
 	cpio/test/test_extract_cpio_bz2.c \
 	cpio/test/test_extract_cpio_grz.c \
 	cpio/test/test_extract_cpio_gz.c \

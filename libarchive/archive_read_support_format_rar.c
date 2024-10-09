@@ -734,7 +734,7 @@ archive_read_support_format_rar(struct archive *_a)
   archive_check_magic(_a, ARCHIVE_READ_MAGIC, ARCHIVE_STATE_NEW,
                       "archive_read_support_format_rar");
 
-  rar = (struct rar *)calloc(1, sizeof(*rar));
+  rar = calloc(1, sizeof(*rar));
   if (rar == NULL)
   {
     archive_set_error(&a->archive, ENOMEM, "Can't allocate rar data");
@@ -2607,8 +2607,7 @@ read_next_symbol(struct archive_read *a, struct huffman_code *code)
   rar_br_consume(br, code->tablesize);
 
   node = value;
-  while (!(code->tree[node].branches[0] ==
-    code->tree[node].branches[1]))
+  while (code->tree[node].branches[0] != code->tree[node].branches[1])
   {
     if (!rar_br_read_ahead(a, br, 1)) {
       archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT,
@@ -2803,9 +2802,7 @@ make_table(struct archive_read *a, struct huffman_code *code)
   else
     code->tablesize = code->maxlength;
 
-  code->table =
-    (struct huffman_table_entry *)calloc(1, sizeof(*code->table)
-    * ((size_t)1 << code->tablesize));
+  code->table = calloc(1U << code->tablesize, sizeof(*code->table));
 
   return make_table_recurse(a, code, 0, code->table, 0, code->tablesize);
 }
@@ -3428,6 +3425,12 @@ run_filters(struct archive_read *a)
       return 0;
   }
 
+  if (filter->blocklength > VM_MEMORY_SIZE)
+  {
+    archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT, "Bad RAR file data");
+    return 0;
+  }
+
   ret = copy_from_lzss_window(a, filters->vm->memory, start, filter->blocklength);
   if (ret != ARCHIVE_OK)
     return 0;
@@ -3684,7 +3687,7 @@ execute_filter_e8(struct rar_filter *filter, struct rar_virtual_machine *vm, siz
     {
       uint32_t currpos = (uint32_t)pos + i + 1;
       int32_t address = (int32_t)vm_read_32(vm, i + 1);
-      if (address < 0 && currpos >= -(uint32_t)address)
+      if (address < 0 && currpos >= (~(uint32_t)address + 1))
         vm_write_32(vm, i + 1, address + filesize);
       else if (address >= 0 && (uint32_t)address < filesize)
         vm_write_32(vm, i + 1, address - currpos);

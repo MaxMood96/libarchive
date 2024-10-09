@@ -1,6 +1,5 @@
-/*-
- * Copyright (c) 2003-2007 Tim Kientzle
- * All rights reserved.
+/*-SPDX-License-Identifier: BSD-2-Clause
+ * Copyright (C) 2024 by наб <nabijaczleweli@nabijaczleweli.xyz>
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -24,39 +23,18 @@
  */
 #include "test.h"
 
-DEFINE_TEST(test_option_d)
+static const char data[] = "!<arch>\narchivemount.1/ 0           0     0     644     0         `\n";
+
+
+DEFINE_TEST(test_ar_mode)
 {
-	int r;
+	struct archive * ar = archive_read_new();
+	assertEqualInt(archive_read_support_format_all(ar), ARCHIVE_OK);
+	assertEqualInt(archive_read_open_memory(ar, data, sizeof(data) - 1), ARCHIVE_OK);
 
-	/*
-	 * Create a file in a directory.
-	 */
-	assertMakeDir("dir", 0755);
-	assertMakeFile("dir/file", 0644, NULL);
+	struct archive_entry * entry;
+	assertEqualIntA(ar, archive_read_next_header(ar, &entry), ARCHIVE_OK);
+	assertEqualIntA(ar, archive_entry_mode(entry), S_IFREG | 0644);
 
-	/* Create an archive. */
-	r = systemf("echo dir/file | %s -o > archive.cpio 2>archive.err", testprog);
-	assertEqualInt(r, 0);
-	assertTextFileContents("1 block\n", "archive.err");
-	assertFileSize("archive.cpio", 512);
-
-	/* Dearchive without -d, this should fail. */
-	assertMakeDir("without-d", 0755);
-	assertChdir("without-d");
-	r = systemf("%s -i < ../archive.cpio >out 2>err", testprog);
-	assert(r != 0);
-	assertEmptyFile("out");
-	/* And the file should not be restored. */
-	assertFileNotExists("dir/file");
-
-	/* Dearchive with -d, this should succeed. */
-	assertChdir("..");
-	assertMakeDir("with-d", 0755);
-	assertChdir("with-d");
-	r = systemf("%s -id < ../archive.cpio >out 2>err", testprog);
-	assertEqualInt(r, 0);
-	assertEmptyFile("out");
-	assertTextFileContents("1 block\n", "err");
-	/* And the file should be restored. */
-	assertFileExists("dir/file");
+	archive_read_free(ar);
 }
